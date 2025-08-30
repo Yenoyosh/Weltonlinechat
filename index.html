@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Weltchat</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    #log { border: 1px solid #ddd; padding: 1rem; height: 50vh; overflow: auto; }
+    form { display: flex; gap: .5rem; margin-top: .5rem; }
+    input, button { padding: .6rem; }
+    .sys { color: #666; font-style: italic; }
+    .msg time { font-size: .8em; color: #999; margin-left: .5rem; }
+  </style>
+</head>
+<body>
+  <h1>Weltchat</h1>
+  <div>
+    <label>Raum: <input id="room" value="global" /></label>
+    <label>Name: <input id="name" value="Gast" /></label>
+    <button id="join">Beitreten</button>
+  </div>
+  <div id="log" aria-live="polite"></div>
+  <form id="send" style="display:none">
+    <input id="text" placeholder="Nachricht eingeben…" autocomplete="off" />
+    <button>Senden</button>
+  </form>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    const WS_URL = "http://localhost:3000"; // Für lokalen Test
+    let socket;
+
+    const log = document.getElementById("log");
+    const roomEl = document.getElementById("room");
+    const nameEl = document.getElementById("name");
+    const joinBtn = document.getElementById("join");
+    const form = document.getElementById("send");
+    const text = document.getElementById("text");
+
+    function addLine(html, cls) {
+      const div = document.createElement("div");
+      if (cls) div.className = cls;
+      div.innerHTML = html;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    joinBtn.onclick = () => {
+      socket = io(WS_URL, { transports: ["websocket"] });
+      socket.on("connect", () => {
+        socket.emit("join", { room: roomEl.value.trim() || "global", name: nameEl.value.trim() || "Gast" });
+        addLine("Verbunden.", "sys");
+        form.style.display = "";
+      });
+      socket.on("system", (t) => addLine(t, "sys"));
+      socket.on("message", (m) => {
+        const t = new Date(m.ts).toLocaleTimeString();
+        addLine(`<span class="msg"><b>${m.from}:</b> ${m.text} <time>${t}</time></span>`);
+      });
+      socket.on("disconnect", () => addLine("Verbindung getrennt.", "sys"));
+    };
+
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const room = roomEl.value.trim() || "global";
+      const txt = text.value.trim();
+      if (!txt) return;
+      socket.emit("message", { room, text: txt });
+      text.value = "";
+    };
+  </script>
+</body>
+</html>
