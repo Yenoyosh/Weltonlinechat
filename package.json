@@ -1,6 +1,7 @@
 {
   "name": "weltchat",
   "version": "1.0.0",
+  "description": "Einfacher Socket.IO-Chat",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
