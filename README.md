@@ -9,3 +9,4 @@ Dies ist ein **weltweit zugänglicher Chatserver**, gehostet bei [Render.com](ht
 - Eigene Namen setzen (`/name <deinName>`)
 - Private Nachrichten senden (`/msg <Name> <Nachricht>`)
 - Vollständig browserbasiert – keine Installation nötig
+- Eigene Räume erstellen – private Gespräche
