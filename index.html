@@ -14,7 +14,7 @@
     #msgForm { display: flex; gap: 10px; }
     #msgInput { flex: 1; padding: 6px; }
     #sendBtn { padding: 6px 12px; }
-    .sys { color: #555; font-style: italic; margin: 4px 0; }
+    .sys { color: #555; font-style: italic; margin: 4px 0; white-space: pre-line; }
     .priv { color: #800080; margin: 4px 0; }
     .msg { margin: 4px 0; }
     .msg time { font-size: 12px; opacity: .7; margin-left: 5px; }
@@ -25,14 +25,14 @@
 
   <div id="roomSection">
     <label for="roomInput">Raum:</label>
-    <input id="roomInput" type="text" value="Global" placeholder="Global (Standard)" />
+    <input id="roomInput" type="text" value="Global" />
     <button id="joinRoomBtn">Beitreten</button>
   </div>
 
   <div id="log"></div>
 
   <form id="msgForm" autocomplete="off">
-    <input id="msgInput" type="text" placeholder="Nachricht oder Befehl (/name, /msg, /online, /members, /help) ..." />
+    <input id="msgInput" type="text" placeholder="Nachricht oder Befehl (/help für Liste) ..." />
     <button id="sendBtn" type="submit">Senden</button>
   </form>
 
@@ -58,14 +58,14 @@
     }
 
     socket.on("system", (msg) => addLine("⚙ " + msg, "sys"));
-
     socket.on("chat", (msg) => {
       addLine(`<b>${msg.from}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "msg");
     });
-
-    // Flüstern: "xxxx flüstert dir zu: *text*"
     socket.on("private", (msg) => {
       addLine(`${msg.from} flüstert dir zu: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "priv");
+    });
+    socket.on("roomUpdate", (room) => {
+      roomInput.value = room;
     });
 
     msgForm.addEventListener("submit", (e) => {
@@ -79,7 +79,7 @@
 
     joinBtn.addEventListener("click", () => {
       const roomName = roomInput.value.trim() || "Global";
-      socket.emit("message", `/join ${roomName}`);
+      socket.emit("changeRoom", roomName);
     });
   </script>
 </body>
