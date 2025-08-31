@@ -16,7 +16,7 @@ const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,24}$/;
 const users = {}; // socket.id -> { name, room }
 const roomCounts = { [DEFAULT_ROOM]: 0 };
 
-// --- Hilfsfunktionen ---
+// --- Helpers ---
 function escapeHTML(str = "") {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -30,11 +30,10 @@ function isValidRoom(room) {
   return ROOM_NAME_REGEX.test(room);
 }
 
-// Generiert eindeutige Namen mit _2, _3 … falls schon vergeben
+// unique names with suffix _2, _3 … if needed
 function getUniqueName(desired) {
   const lowerDesired = desired.trim().toLowerCase();
   const currentNames = Object.values(users).map(u => u.name.toLowerCase());
-
   if (!currentNames.includes(lowerDesired)) return desired;
 
   let counter = 2;
@@ -43,7 +42,6 @@ function getUniqueName(desired) {
     newName = `${desired}_${counter}`;
     counter++;
   } while (currentNames.includes(newName.toLowerCase()));
-
   return newName;
 }
 
@@ -60,7 +58,6 @@ function joinRoom(socket, nextRoom) {
   const prevRoom = user.room;
   if (prevRoom === nextRoom) return;
 
-  // alten Raum verlassen
   if (prevRoom) {
     socket.leave(prevRoom);
     roomCounts[prevRoom] = Math.max(0, (roomCounts[prevRoom] || 0) - 1);
@@ -73,7 +70,6 @@ function joinRoom(socket, nextRoom) {
     }
   }
 
-  // neuen Raum betreten
   if (!roomCounts[nextRoom]) roomCounts[nextRoom] = 0;
   socket.join(nextRoom);
   roomCounts[nextRoom] += 1;
@@ -92,7 +88,7 @@ function sendRoomUserList(room) {
   io.to(room).emit("userlist", { room, users: members });
 }
 
-// --- Static-Dateien ---
+// --- Static ---
 app.use(express.static(path.join(__dirname)));
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
@@ -110,7 +106,7 @@ io.on("connection", (socket) => {
     const msg = (raw ?? "").toString().trim();
     if (!msg) return;
 
-    // --- Name ändern ---
+    // /name
     if (msg.startsWith("/name ")) {
       const desired = escapeHTML(msg.slice(6).trim());
       if (!desired) {
@@ -126,7 +122,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // --- Private Nachricht ---
+    // /msg <Name> <Text>
     if (msg.startsWith("/msg ")) {
       const parts = msg.split(" ");
       const targetName = parts[1];
@@ -145,16 +141,19 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // an Empfänger: "xxxx flüstert dir zu: *text*"
       io.to(targetId).emit("private", {
         from: users[socket.id].name,
-        text: safeText,
+        text: `*${safeText}*`,
         ts: Date.now(),
       });
+
+      // an Sender Bestätigung
       socket.emit("system", `Flüstern an ${escapeHTML(targetName)}: ${safeText}`);
       return;
     }
 
-    // --- Raum wechseln ---
+    // /join <Raum>
     if (msg.startsWith("/join ")) {
       const roomName = msg.slice(6).trim();
       if (!isValidRoom(roomName)) {
@@ -165,13 +164,34 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // --- Hilfe anzeigen ---
-    if (msg === "/help") {
-      socket.emit("system", "Befehle: /name <neu>, /join <Raum>, /msg <Name> <Text>, /help");
+    // /online -> gesamt online
+    if (msg === "/online") {
+      const total = Object.keys(users).length;
+      socket.emit("system", `Online: ${total} Benutzer`);
       return;
     }
 
-    // --- Normale Nachricht ---
+    // /members -> Mitglieder im aktuellen Raum
+    if (msg === "/members") {
+      const user = users[socket.id];
+      if (!user?.room) {
+        socket.emit("system", "Du bist in keinem Raum.");
+        return;
+      }
+      const members = Object.values(users)
+        .filter(u => u.room === user.room)
+        .map(u => u.name);
+      socket.emit("system", `Mitglieder in ${user.room} (${members.length}): ${members.join(", ")}`);
+      return;
+    }
+
+    // /help
+    if (msg === "/help") {
+      socket.emit("system", "Befehle: /name <neu>, /join <Raum>, /msg <Name> <Text>, /online, /members, /help");
+      return;
+    }
+
+    // normale Nachricht (in aktuellen Raum)
     const safe = escapeHTML(msg);
     const user = users[socket.id];
     if (!user?.room) {
