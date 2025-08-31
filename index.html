@@ -1,88 +1,85 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <title>World Wide Onlinechat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="/socket.io/client-dist/socket.io.min.js"></script>
+  <meta charset="utf-8" />
+  <title>Weltchat – Klassisches Layout</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { margin:0; background:#fff; color:#111; }
-    header { padding:12px 16px; border-bottom:1px solid #e5e5e5; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    .room-label { font-weight:600; }
-    input[type="text"] { padding:8px 10px; border:1px solid #ddd; border-radius:6px; min-width:220px; }
-    button { padding:8px 12px; border:1px solid #ddd; background:#f8f8f8; border-radius:6px; cursor:pointer; }
-    button:hover { background:#f2f2f2; }
-    #log { height: calc(100vh - 160px); overflow-y:auto; padding:12px 16px; }
-    .sys { color:#555; font-style:italic; margin:6px 0; }
-    .chat { margin:6px 0; }
-    .name { font-weight:600; margin-right:6px; }
-    .priv { background:#fffbe6; border:1px solid #f5e6a8; padding:8px; border-radius:6px; margin:6px 0; }
-    footer { display:flex; gap:8px; padding:12px 16px; border-top:1px solid #e5e5e5; }
-    #roomNow { font-weight:700; }
+    body { font-family: Arial, sans-serif; margin: 20px; background: #ffffff; color: #000000; }
+    h1 { margin-bottom: 10px; }
+    #roomSection { margin-bottom: 10px; }
+    #roomInput { padding: 5px; width: 200px; }
+    #joinRoomBtn { padding: 6px; }
+    #log { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; background: #f9f9f9; border-radius: 5px; margin-bottom: 10px; }
+    #msgForm { display: flex; gap: 10px; }
+    #msgInput { flex: 1; padding: 6px; }
+    #sendBtn { padding: 6px 12px; }
+    .sys { color: #555; font-style: italic; margin: 4px 0; white-space: pre-line; }
+    .priv { color: #800080; margin: 4px 0; }
+    .msg { margin: 4px 0; }
+    .msg time { font-size: 12px; opacity: .7; margin-left: 5px; }
   </style>
 </head>
 <body>
-  <header>
-    <span class="room-label">Raum:</span>
-    <input id="roomInput" type="text" placeholder="Global" />
-    <button id="roomBtn">Wechseln</button>
-    <span>Aktueller Raum: <span id="roomNow">Global</span> (Standard ist Global)</span>
-  </header>
+  <h1>🌍 Weltchat</h1>
 
-  <div id="log" aria-live="polite"></div>
+  <div id="roomSection">
+    <label for="roomInput">Raum:</label>
+    <input id="roomInput" type="text" value="Global" />
+    <button id="joinRoomBtn">Beitreten</button>
+  </div>
 
-  <footer>
-    <input id="msg" type="text" placeholder="Nachricht oder Befehl (Tipp: /help)" style="flex:1" />
-    <button id="send">Senden</button>
-  </footer>
+  <div id="log"></div>
 
+  <form id="msgForm" autocomplete="off">
+    <input id="msgInput" type="text" placeholder="Nachricht oder Befehl (/help für Liste) ..." />
+    <button id="sendBtn" type="submit">Senden</button>
+  </form>
+
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
     const log = document.getElementById("log");
-    const msg = document.getElementById("msg");
-    const send = document.getElementById("send");
     const roomInput = document.getElementById("roomInput");
-    const roomBtn = document.getElementById("roomBtn");
-    const roomNow = document.getElementById("roomNow");
+    const joinBtn = document.getElementById("joinRoomBtn");
+    const msgForm = document.getElementById("msgForm");
+    const msgInput = document.getElementById("msgInput");
 
-    function line(cls, html) {
+    function addLine(text, cls = "") {
       const div = document.createElement("div");
       div.className = cls;
-      div.innerHTML = html;
+      div.innerHTML = text;
       log.appendChild(div);
       log.scrollTop = log.scrollHeight;
     }
 
-    socket.on("system", (text) => line("sys", "⚙ " + text));
-    socket.on("roomUpdate", (room) => { roomNow.textContent = room; roomInput.value = room; });
+    function fmtTime(ts) {
+      return new Date(ts).toLocaleTimeString();
+    }
 
-    socket.on("chat", (m) => {
-      if (m.room !== roomNow.textContent) return; // nur aktuellem Raum anzeigen
-      line("chat", `<span class="name">${m.from}:</span> ${m.text}`);
+    socket.on("system", (msg) => addLine("⚙ " + msg, "sys"));
+    socket.on("chat", (msg) => {
+      addLine(`<b>${msg.from}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "msg");
     });
-
-    socket.on("private", (m) => {
-      line("priv", m.display || (`${m.from} flüstert dir zu: ${m.text}`));
+    socket.on("private", (msg) => {
+      addLine(`${msg.from} flüstert dir zu: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "priv");
     });
-
-    send.addEventListener("click", () => {
-      const t = msg.value.trim();
-      if (!t) return;
-      socket.emit("message", t);
-      msg.value = "";
-      msg.focus();
-    });
-    msg.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { send.click(); }
+    socket.on("roomUpdate", (room) => {
+      roomInput.value = room;
     });
 
-    roomBtn.addEventListener("click", () => {
-      const r = roomInput.value.trim() || "Global";
-      socket.emit("changeRoom", r);
+    msgForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = msgInput.value.trim();
+      if (!text) return;
+      socket.emit("message", text);
+      msgInput.value = "";
+      msgInput.focus();
     });
-    roomInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") roomBtn.click();
+
+    joinBtn.addEventListener("click", () => {
+      const roomName = roomInput.value.trim() || "Global";
+      socket.emit("changeRoom", roomName);
     });
   </script>
 </body>
