@@ -1,56 +1,119 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <title>Weltchat mit Namen & Flüstern</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>World Wide Onlinechat</title>
   <style>
-    body { font-family: sans-serif; margin: 2rem; max-width: 800px; }
-    #log { border: 1px solid #ddd; padding: 1rem; height: 50vh; overflow: auto; border-radius: 6px; }
-    form { display: flex; gap: .5rem; margin-top: 1rem; }
-    input, button { padding: .5rem; font-size: 1rem; }
-    .system { color: gray; font-style: italic; }
-    .private { color: purple; font-style: italic; }
-    .msg time { color: #999; font-size: .8em; margin-left: .5rem; }
+    body { font-family: system-ui, Arial, sans-serif; margin:0; background:#0b0f14; color:#e6edf3; }
+    header { padding:12px 16px; background:#111827; border-bottom:1px solid #1f2937; display:flex; gap:12px; align-items:center; }
+    .badge { background:#1f2937; padding:4px 8px; border-radius:999px; font-size:12px; }
+    #container { display:grid; grid-template-columns: 240px 1fr; height: calc(100vh - 54px); }
+    #sidebar { border-right:1px solid #1f2937; padding:12px; overflow:auto; }
+    #roomTitle { font-weight:700; margin:0 0 8px; }
+    #users { list-style:none; padding:0; margin:0; font-size:14px; }
+    #users li { padding:4px 6px; border-radius:6px; }
+    #users li:nth-child(odd){ background:#0f172a; }
+    #main { display:flex; flex-direction:column; }
+    #messages { flex:1; overflow:auto; padding:12px; }
+    .msg { padding:8px 10px; margin:6px 0; border-radius:8px; background:#0f172a; }
+    .sys { background:#1f2937; font-style:italic; }
+    .priv { outline:1px dashed #8b5cf6; }
+    .meta { font-size:12px; opacity:.7; margin-bottom:4px; }
+    #form { display:flex; gap:8px; padding:12px; border-top:1px solid #1f2937; background:#101827; }
+    #input { flex:1; padding:10px; border-radius:8px; border:1px solid #243244; background:#0b1220; color:#e6edf3; }
+    #send { padding:10px 14px; border-radius:8px; border:0; background:#2563eb; color:white; cursor:pointer; }
+    #help { font-size:12px; opacity:.8; padding:0 12px 12px; }
+    a, a:visited { color:#93c5fd; }
   </style>
 </head>
 <body>
-  <h1>🌍 Weltchat</h1>
-  <div id="log"></div>
+  <header>
+    <div class="badge">WW Onlinechat</div>
+    <div id="roomBadge" class="badge">Raum: …</div>
+  </header>
 
-  <form id="form">
-    <input id="input" autocomplete="off" placeholder="Nachricht /name /msg …">
-    <button>Senden</button>
-  </form>
+  <div id="container">
+    <aside id="sidebar">
+      <h3 id="roomTitle">Raum</h3>
+      <ul id="users"></ul>
+      <p id="help">
+        <strong>Befehle:</strong><br/>
+        <code>/name &lt;neu&gt;</code><br/>
+        <code>/join &lt;Raum&gt;</code><br/>
+        <code>/msg &lt;Name&gt; &lt;Text&gt;</code>
+      </p>
+    </aside>
+
+    <main id="main">
+      <div id="messages"></div>
+      <form id="form" autocomplete="off">
+        <input id="input" placeholder="Nachricht oder Befehl… (z. B. /join Test)" />
+        <button id="send" type="submit">Senden</button>
+      </form>
+    </main>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    const log = document.getElementById('log');
-    const form = document.getElementById('form');
-    const input = document.getElementById('input');
 
-    const addLine = (html, cls = "") => {
+    const messages = document.getElementById("messages");
+    const usersUl  = document.getElementById("users");
+    const roomBadge = document.getElementById("roomBadge");
+    const roomTitle = document.getElementById("roomTitle");
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+
+    function addMsg(text, cls = "") {
       const div = document.createElement("div");
-      div.className = cls;
-      div.innerHTML = html;
-      log.appendChild(div);
-      log.scrollTop = log.scrollHeight;
-    };
+      div.className = "msg " + cls;
+      div.innerHTML = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
 
-    socket.on("system", (msg) => addLine(`⚙ ${msg}`, "system"));
-    socket.on("private", (msg) => addLine(`🤫 Von ${msg.from}: ${msg.text}`, "private"));
-    socket.on("chat", (msg) => {
-      const time = new Date(msg.ts).toLocaleTimeString();
-      addLine(`<b>${msg.from}:</b> ${msg.text} <time>${time}</time>`);
+    function fmtTs(ts) {
+      try {
+        return new Date(ts).toLocaleTimeString();
+      } catch { return ""; }
+    }
+
+    socket.on("system", (t) => addMsg("⚙ " + t, "sys"));
+
+    socket.on("chat", (m) => {
+      const who = `<div class="meta">${m.from} • ${m.room} • ${fmtTs(m.ts)}</div>`;
+      addMsg(`${who}${m.text}`);
     });
 
-    form.addEventListener('submit', (e) => {
+    socket.on("private", (m) => {
+      const who = `<div class="meta">Flüstern von ${m.from} • ${fmtTs(m.ts)}</div>`;
+      addMsg(`${who}${m.text}`, "priv");
+    });
+
+    socket.on("userlist", ({ room, users }) => {
+      roomBadge.textContent = `Raum: ${room}`;
+      roomTitle.textContent = `Raum: ${room}`;
+      usersUl.innerHTML = "";
+      users.forEach(u => {
+        const li = document.createElement("li");
+        li.textContent = u;
+        usersUl.appendChild(li);
+      });
+    });
+
+    socket.on("room-removed", (room) => {
+      // rein informativ: falls UI mal eine Raumliste hätte
+      // addMsg(`(Info) Raum entfernt: ${room}`, "sys");
+    });
+
+    form.addEventListener("submit", (e) => {
       e.preventDefault();
-      if (input.value.trim()) {
-        socket.emit("message", input.value);
-        input.value = '';
-      }
+      const text = input.value.trim();
+      if (!text) return;
+      socket.emit("message", text);
+      input.value = "";
+      input.focus();
     });
   </script>
 </body>
