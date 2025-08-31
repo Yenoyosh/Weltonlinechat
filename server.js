@@ -10,16 +10,13 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 const PORT = process.env.PORT || 3000;
 const HOST = "0.0.0.0";
 
-// ---- Einstellungen ----
 const DEFAULT_ROOM = "Global";
-const RESERVED_NAMES = new Set(["owner", "admin", "system", "moderator"]);
 const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,24}$/;
 
-// ---- Speicher ----
 const users = {}; // socket.id -> { name, room }
 const roomCounts = { [DEFAULT_ROOM]: 0 };
 
-// ---- Hilfsfunktionen ----
+// --- Hilfsfunktionen ---
 function escapeHTML(str = "") {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -33,17 +30,26 @@ function isValidRoom(room) {
   return ROOM_NAME_REGEX.test(room);
 }
 
-function nameTaken(nameCandidate) {
-  const lower = nameCandidate.trim().toLowerCase();
-  if (RESERVED_NAMES.has(lower)) return true;
-  return Object.values(users).some(u => u.name.toLowerCase() === lower);
+// Generiert eindeutige Namen mit _2, _3 … falls schon vergeben
+function getUniqueName(desired) {
+  const lowerDesired = desired.trim().toLowerCase();
+  const currentNames = Object.values(users).map(u => u.name.toLowerCase());
+
+  if (!currentNames.includes(lowerDesired)) return desired;
+
+  let counter = 2;
+  let newName;
+  do {
+    newName = `${desired}_${counter}`;
+    counter++;
+  } while (currentNames.includes(newName.toLowerCase()));
+
+  return newName;
 }
 
 function uniqueGuestName() {
-  while (true) {
-    const name = "Gast-" + Math.random().toString(36).slice(2, 6);
-    if (!nameTaken(name)) return name;
-  }
+  const base = "Gast-" + Math.random().toString(36).slice(2, 6);
+  return getUniqueName(base);
 }
 
 function joinRoom(socket, nextRoom) {
@@ -52,7 +58,6 @@ function joinRoom(socket, nextRoom) {
   if (!user) return;
 
   const prevRoom = user.room;
-
   if (prevRoom === nextRoom) return;
 
   // alten Raum verlassen
@@ -87,13 +92,13 @@ function sendRoomUserList(room) {
   io.to(room).emit("userlist", { room, users: members });
 }
 
-// ---- Static ----
+// --- Static-Dateien ---
 app.use(express.static(path.join(__dirname)));
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// ---- Socket.IO ----
+// --- Socket.IO ---
 io.on("connection", (socket) => {
   const name = uniqueGuestName();
   users[socket.id] = { name, room: null };
@@ -105,26 +110,18 @@ io.on("connection", (socket) => {
     const msg = (raw ?? "").toString().trim();
     if (!msg) return;
 
-    // --- Namensänderung ---
+    // --- Name ändern ---
     if (msg.startsWith("/name ")) {
       const desired = escapeHTML(msg.slice(6).trim());
       if (!desired) {
         socket.emit("system", "Bitte gib einen Namen an: /name <deinName>");
         return;
       }
-      if (desired.length > 24) {
-        socket.emit("system", "Namen sind max. 24 Zeichen lang.");
-        return;
-      }
-      if (nameTaken(desired)) {
-        socket.emit("system", `Der Name "${desired}" ist reserviert oder bereits vergeben.`);
-        return;
-      }
-
+      const uniqueName = getUniqueName(desired);
       const oldName = users[socket.id].name;
-      users[socket.id].name = desired;
-      socket.emit("system", `Dein Name ist jetzt: ${desired}`);
-      io.to(users[socket.id].room).emit("system", `${oldName} heißt jetzt ${desired}`);
+      users[socket.id].name = uniqueName;
+      socket.emit("system", `Dein Name ist jetzt: ${uniqueName}`);
+      io.to(users[socket.id].room).emit("system", `${oldName} heißt jetzt ${uniqueName}`);
       sendRoomUserList(users[socket.id].room);
       return;
     }
