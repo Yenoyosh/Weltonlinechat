@@ -1,59 +1,34 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Weltchat</title>
+  <meta charset="utf-8">
+  <title>Weltchat mit Namen & Flüstern</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, Segoe UI, Roboto, sans-serif; margin: 2rem; max-width: 900px }
-    h1 { margin: 0 0 1rem; }
-    #log { border: 1px solid #ddd; padding: 1rem; height: 50vh; overflow: auto; border-radius: 8px; }
-    form { display: grid; grid-template-columns: 1fr auto; gap: .5rem; margin-top: .5rem; }
-    input, button, select { padding: .65rem .75rem; font: inherit; }
-    .row { display: flex; gap: .5rem; margin: .5rem 0; flex-wrap: wrap; align-items: center; }
-    .sys { color: #666; font-style: italic; }
-    .msg { margin: .35rem 0; }
-    .msg time { font-size: .8em; color: #999; margin-left: .5rem; }
-    .top { display:flex; gap:1rem; align-items:center; justify-content:space-between; }
-    .grow { flex:1 }
-    .roombox { display:flex; gap:.5rem; align-items:center }
-    .roombox input { width: 14rem; }
+    body { font-family: sans-serif; margin: 2rem; max-width: 800px; }
+    #log { border: 1px solid #ddd; padding: 1rem; height: 50vh; overflow: auto; border-radius: 6px; }
+    form { display: flex; gap: .5rem; margin-top: 1rem; }
+    input, button { padding: .5rem; font-size: 1rem; }
+    .system { color: gray; font-style: italic; }
+    .private { color: purple; font-style: italic; }
+    .msg time { color: #999; font-size: .8em; margin-left: .5rem; }
   </style>
 </head>
 <body>
-  <div class="top">
-    <h1>🌍 Weltchat</h1>
-    <div class="roombox">
-      <label for="room">Raum:</label>
-      <input id="room" placeholder="z.B. global" />
-      <button id="join">Beitreten</button>
-    </div>
-  </div>
+  <h1>🌍 Weltchat</h1>
+  <div id="log"></div>
 
-  <div id="log" aria-live="polite"></div>
-
-  <form id="sendForm" autocomplete="off">
-    <input id="text" class="grow" placeholder="Nachricht schreiben…" />
-    <button type="submit">Senden</button>
+  <form id="form">
+    <input id="input" autocomplete="off" placeholder="Nachricht /name /msg …">
+    <button>Senden</button>
   </form>
 
-  <!-- Wichtig: keine absolute URL! Das Client-Script kommt vom gleichen Host -->
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // Verbindung zur gleichen Origin herstellen (kein 'http://localhost:3000'!)
-    const socket = io(undefined, {
-      transports: ["websocket", "polling"], // Render erlaubt beides
-      upgrade: true
-    });
-
-    const log = document.getElementById("log");
-    const form = document.getElementById("sendForm");
-    const text = document.getElementById("text");
-    const roomEl = document.getElementById("room");
-    const joinBtn = document.getElementById("join");
-
-    let currentRoom = "";
+    const socket = io();
+    const log = document.getElementById('log');
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
 
     const addLine = (html, cls = "") => {
       const div = document.createElement("div");
@@ -63,44 +38,20 @@
       log.scrollTop = log.scrollHeight;
     };
 
-    const fmtTime = (ts) => new Date(ts).toLocaleTimeString();
-
-    socket.on("connect", () => addLine(`Verbunden: <b>${socket.id}</b>`, "sys"));
-    socket.on("disconnect", () => addLine("Verbindung getrennt.", "sys"));
-
-    // Nachrichten vom Server
-    socket.on("message", (msg) => {
-      if (msg.system) {
-        addLine(msg.text, "sys");
-      } else {
-        addLine(
-          `<span class="msg"><b>${msg.id.slice(0,6)}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time></span>`
-        );
-      }
+    socket.on("system", (msg) => addLine(`⚙ ${msg}`, "system"));
+    socket.on("private", (msg) => addLine(`🤫 Von ${msg.from}: ${msg.text}`, "private"));
+    socket.on("chat", (msg) => {
+      const time = new Date(msg.ts).toLocaleTimeString();
+      addLine(`<b>${msg.from}:</b> ${msg.text} <time>${time}</time>`);
     });
 
-    // Raum beitreten
-    const joinRoom = () => {
-      const r = (roomEl.value || "").trim() || "global";
-      if (r === currentRoom) return;
-      currentRoom = r;
-      addLine(`Raum gewechselt zu <b>${currentRoom}</b>`, "sys");
-      socket.emit("join", currentRoom);
-    };
-    joinBtn.onclick = joinRoom;
-
-    // Senden
-    form.onsubmit = (e) => {
+    form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const txt = text.value.trim();
-      if (!txt) return;
-      socket.emit("message", { room: currentRoom || "global", text: txt });
-      text.value = "";
-      text.focus();
-    };
-
-    // Beim Laden automatisch 'global' beitreten
-    joinRoom();
+      if (input.value.trim()) {
+        socket.emit("message", input.value);
+        input.value = '';
+      }
+    });
   </script>
 </body>
 </html>
