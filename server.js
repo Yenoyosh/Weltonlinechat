@@ -10,18 +10,16 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 const PORT = process.env.PORT || 3000;
 const HOST = "0.0.0.0";
 
-// ------ Konfiguration ------
+// ---- Einstellungen ----
 const DEFAULT_ROOM = "Global";
-const RESERVED_NAMES = new Set(["owner", "admin", "system", "moderator"]); // alles klein schreiben
-const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,24}$/; // erlaubte Räume
+const RESERVED_NAMES = new Set(["owner", "admin", "system", "moderator"]);
+const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,24}$/;
 
-// ------ State ------
-/** users[socket.id] = { name: string, room: string } */
-const users = {};
-/** roomCounts[room] = Anzahl der Sockets im Raum (wir pflegen das selbst) */
+// ---- Speicher ----
+const users = {}; // socket.id -> { name, room }
 const roomCounts = { [DEFAULT_ROOM]: 0 };
 
-// ------ Utils ------
+// ---- Hilfsfunktionen ----
 function escapeHTML(str = "") {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -36,15 +34,15 @@ function isValidRoom(room) {
 }
 
 function nameTaken(nameCandidate) {
-  const n = nameCandidate.toLowerCase();
-  if (RESERVED_NAMES.has(n)) return true;
-  return Object.values(users).some(u => u.name.toLowerCase() === n);
+  const lower = nameCandidate.trim().toLowerCase();
+  if (RESERVED_NAMES.has(lower)) return true;
+  return Object.values(users).some(u => u.name.toLowerCase() === lower);
 }
 
 function uniqueGuestName() {
   while (true) {
-    const g = "Gast-" + Math.random().toString(36).slice(2, 6);
-    if (!nameTaken(g)) return g;
+    const name = "Gast-" + Math.random().toString(36).slice(2, 6);
+    if (!nameTaken(name)) return name;
   }
 }
 
@@ -55,27 +53,22 @@ function joinRoom(socket, nextRoom) {
 
   const prevRoom = user.room;
 
-  // Nichts tun, wenn gleich
   if (prevRoom === nextRoom) return;
 
-  // Alten Raum verlassen
+  // alten Raum verlassen
   if (prevRoom) {
     socket.leave(prevRoom);
     roomCounts[prevRoom] = Math.max(0, (roomCounts[prevRoom] || 0) - 1);
-
-    // Info an den alten Raum
     io.to(prevRoom).emit("system", `${user.name} hat den Raum verlassen.`);
     sendRoomUserList(prevRoom);
 
-    // Leeren, nicht-Globalen Raum entfernen
     if (prevRoom !== DEFAULT_ROOM && roomCounts[prevRoom] === 0) {
       delete roomCounts[prevRoom];
-      // Optional: allen melden, dass der Raum entfernt wurde (nur Info)
-      io.emit("room-removed", prevRoom);
+      io.emit("system", `Raum "${prevRoom}" wurde gelöscht (leer).`);
     }
   }
 
-  // Neuen Raum betreten (bei Bedarf „anlegen“)
+  // neuen Raum betreten
   if (!roomCounts[nextRoom]) roomCounts[nextRoom] = 0;
   socket.join(nextRoom);
   roomCounts[nextRoom] += 1;
@@ -94,143 +87,120 @@ function sendRoomUserList(room) {
   io.to(room).emit("userlist", { room, users: members });
 }
 
-// ------ Static ------
+// ---- Static ----
 app.use(express.static(path.join(__dirname)));
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// ------ Socket.IO ------
+// ---- Socket.IO ----
 io.on("connection", (socket) => {
-  // User anlegen
   const name = uniqueGuestName();
   users[socket.id] = { name, room: null };
 
   socket.emit("system", `Willkommen, dein Name ist ${name}. Ändere ihn mit /name <deinName>`);
-  // Standardraum
   joinRoom(socket, DEFAULT_ROOM);
 
   socket.on("message", (raw) => {
     const msg = (raw ?? "").toString().trim();
-
-    // leer -> ignorieren
     if (!msg) return;
 
-    // --- Commands ---
-    if (msg.startsWith("/")) {
-      const [cmd, ...rest] = msg.split(" ");
-      const arg = rest.join(" ").trim();
-
-      switch (cmd.toLowerCase()) {
-        case "/help": {
-          socket.emit(
-            "system",
-            "Befehle: /name <neu>, /join <Raum>, /msg <Name> <Text>, /help"
-          );
-          return;
-        }
-
-        case "/name": {
-          const desired = escapeHTML(arg);
-          if (!desired) {
-            socket.emit("system", "Bitte gib einen Namen an: /name <deinName>");
-            return;
-          }
-          if (desired.length > 24) {
-            socket.emit("system", "Namen sind max. 24 Zeichen lang.");
-            return;
-          }
-          if (nameTaken(desired)) {
-            socket.emit("system", `Der Name "${desired}" ist reserviert oder bereits vergeben.`);
-            return;
-          }
-          const old = users[socket.id].name;
-          users[socket.id].name = desired;
-          socket.emit("system", `Dein Name ist jetzt: ${desired}`);
-          io.to(users[socket.id].room).emit("system", `${old} heißt jetzt ${desired}`);
-          sendRoomUserList(users[socket.id].room);
-          return;
-        }
-
-        case "/join": {
-          const requestedRoom = arg;
-          if (!requestedRoom) {
-            socket.emit("system", "Nutzung: /join <Raum>");
-            return;
-          }
-          if (!isValidRoom(requestedRoom)) {
-            socket.emit(
-              "system",
-              "Ungültiger Raumname. Erlaubt: A–Z, a–z, 0–9, _ und - (1–24 Zeichen)."
-            );
-            return;
-          }
-          joinRoom(socket, requestedRoom);
-          return;
-        }
-
-        case "/msg": {
-          const parts = rest;
-          const targetName = parts.shift();
-          const text = parts.join(" ").trim();
-          if (!targetName || !text) {
-            socket.emit("system", "Nutzung: /msg <Name> <Text>");
-            return;
-          }
-          const safeText = escapeHTML(text);
-
-          const targetId = Object.keys(users).find(
-            (id) => users[id].name.toLowerCase() === targetName.toLowerCase()
-          );
-          if (!targetId) {
-            socket.emit("system", `Kein Benutzer mit dem Namen "${escapeHTML(targetName)}" gefunden.`);
-            return;
-          }
-          // Private Nachricht (raumunabhängig)
-          io.to(targetId).emit("private", {
-            from: users[socket.id].name,
-            text: safeText,
-            ts: Date.now(),
-          });
-          socket.emit("system", `Flüstern an ${escapeHTML(targetName)}: ${safeText}`);
-          return;
-        }
-
-        default:
-          socket.emit("system", "Unbekannter Befehl. Tipp: /help");
-          return;
+    // --- Namensänderung ---
+    if (msg.startsWith("/name ")) {
+      const desired = escapeHTML(msg.slice(6).trim());
+      if (!desired) {
+        socket.emit("system", "Bitte gib einen Namen an: /name <deinName>");
+        return;
       }
+      if (desired.length > 24) {
+        socket.emit("system", "Namen sind max. 24 Zeichen lang.");
+        return;
+      }
+      if (nameTaken(desired)) {
+        socket.emit("system", `Der Name "${desired}" ist reserviert oder bereits vergeben.`);
+        return;
+      }
+
+      const oldName = users[socket.id].name;
+      users[socket.id].name = desired;
+      socket.emit("system", `Dein Name ist jetzt: ${desired}`);
+      io.to(users[socket.id].room).emit("system", `${oldName} heißt jetzt ${desired}`);
+      sendRoomUserList(users[socket.id].room);
+      return;
     }
 
-    // --- Normale Nachricht: in aktuellen Raum senden ---
+    // --- Private Nachricht ---
+    if (msg.startsWith("/msg ")) {
+      const parts = msg.split(" ");
+      const targetName = parts[1];
+      const text = parts.slice(2).join(" ").trim();
+      if (!targetName || !text) {
+        socket.emit("system", "Nutzung: /msg <Name> <Text>");
+        return;
+      }
+      const safeText = escapeHTML(text);
+
+      const targetId = Object.keys(users).find(
+        id => users[id].name.toLowerCase() === targetName.toLowerCase()
+      );
+      if (!targetId) {
+        socket.emit("system", `Kein Benutzer mit dem Namen "${escapeHTML(targetName)}" gefunden.`);
+        return;
+      }
+
+      io.to(targetId).emit("private", {
+        from: users[socket.id].name,
+        text: safeText,
+        ts: Date.now(),
+      });
+      socket.emit("system", `Flüstern an ${escapeHTML(targetName)}: ${safeText}`);
+      return;
+    }
+
+    // --- Raum wechseln ---
+    if (msg.startsWith("/join ")) {
+      const roomName = msg.slice(6).trim();
+      if (!isValidRoom(roomName)) {
+        socket.emit("system", "Ungültiger Raumname. Erlaubt: Buchstaben, Zahlen, -, _ (1–24 Zeichen).");
+        return;
+      }
+      joinRoom(socket, roomName);
+      return;
+    }
+
+    // --- Hilfe anzeigen ---
+    if (msg === "/help") {
+      socket.emit("system", "Befehle: /name <neu>, /join <Raum>, /msg <Name> <Text>, /help");
+      return;
+    }
+
+    // --- Normale Nachricht ---
     const safe = escapeHTML(msg);
-    const { name, room } = users[socket.id];
-    if (!room) {
+    const user = users[socket.id];
+    if (!user?.room) {
       socket.emit("system", "Du bist in keinem Raum. Nutze /join <Raum>.");
       return;
     }
-    io.to(room).emit("chat", {
-      from: name,
-      room,
+
+    io.to(user.room).emit("chat", {
+      from: user.name,
+      room: user.room,
       text: safe,
       ts: Date.now(),
     });
   });
 
   socket.on("disconnect", () => {
-    const info = users[socket.id];
-    if (info) {
-      const { name, room } = info;
-      // Aus Raum austragen
+    const user = users[socket.id];
+    if (user) {
+      const { name, room } = user;
       if (room) {
         roomCounts[room] = Math.max(0, (roomCounts[room] || 1) - 1);
         io.to(room).emit("system", `${name} hat den Chat verlassen.`);
         sendRoomUserList(room);
-
-        // temporäre Räume wegräumen
         if (room !== DEFAULT_ROOM && roomCounts[room] === 0) {
           delete roomCounts[room];
-          io.emit("room-removed", room);
+          io.emit("system", `Raum "${room}" wurde gelöscht (leer).`);
         }
       }
       delete users[socket.id];
