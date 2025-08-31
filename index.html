@@ -5,17 +5,17 @@
   <title>Weltchat – Klassisches Layout</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #0b0f14; color: #e6edf3; }
+    body { font-family: Arial, sans-serif; margin: 20px; background: #ffffff; color: #000000; }
     h1 { margin-bottom: 10px; }
     #roomSection { margin-bottom: 10px; }
     #roomInput { padding: 5px; width: 200px; }
     #joinRoomBtn { padding: 6px; }
-    #log { border: 1px solid #333; padding: 10px; height: 300px; overflow-y: auto; background: #0f172a; border-radius: 5px; margin-bottom: 10px; }
+    #log { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; background: #f9f9f9; border-radius: 5px; margin-bottom: 10px; }
     #msgForm { display: flex; gap: 10px; }
     #msgInput { flex: 1; padding: 6px; }
     #sendBtn { padding: 6px 12px; }
-    .sys { color: #93c5fd; font-style: italic; margin: 4px 0; }
-    .priv { color: #d8b4fe; margin: 4px 0; }
+    .sys { color: #555; font-style: italic; margin: 4px 0; }
+    .priv { color: #800080; margin: 4px 0; }
     .msg { margin: 4px 0; }
     .msg time { font-size: 12px; opacity: .7; margin-left: 5px; }
   </style>
@@ -32,7 +32,7 @@
   <div id="log"></div>
 
   <form id="msgForm" autocomplete="off">
-    <input id="msgInput" type="text" placeholder="Nachricht eingeben oder Befehl /name, /msg ..." />
+    <input id="msgInput" type="text" placeholder="Nachricht oder Befehl (/name, /msg, /online, /members, /help) ..." />
     <button id="sendBtn" type="submit">Senden</button>
   </form>
 
@@ -58,11 +58,14 @@
     }
 
     socket.on("system", (msg) => addLine("⚙ " + msg, "sys"));
+
     socket.on("chat", (msg) => {
       addLine(`<b>${msg.from}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "msg");
     });
+
+    // Flüstern: "xxxx flüstert dir zu: *text*"
     socket.on("private", (msg) => {
-      addLine(`🤫 <b>${msg.from}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "priv");
+      addLine(`${msg.from} flüstert dir zu: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "priv");
     });
 
     msgForm.addEventListener("submit", (e) => {
