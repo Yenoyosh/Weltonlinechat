@@ -1,210 +1,83 @@
-const express = require("express");
-const http = require("http");
-const path = require("path");
-const { Server } = require("socket.io");
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>Weltchat – Klassisches Layout</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #ffffff; color: #000000; }
+    h1 { margin-bottom: 10px; }
+    #roomSection { margin-bottom: 10px; }
+    #roomInput { padding: 5px; width: 200px; }
+    #joinRoomBtn { padding: 6px; }
+    #log { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; background: #f9f9f9; border-radius: 5px; margin-bottom: 10px; }
+    #msgForm { display: flex; gap: 10px; }
+    #msgInput { flex: 1; padding: 6px; }
+    #sendBtn { padding: 6px 12px; }
+    .sys { color: #555; font-style: italic; margin: 4px 0; }
+    .priv { color: #800080; margin: 4px 0; }
+    .msg { margin: 4px 0; }
+    .msg time { font-size: 12px; opacity: .7; margin-left: 5px; }
+  </style>
+</head>
+<body>
+  <h1>🌍 Weltchat</h1>
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+  <div id="roomSection">
+    <label for="roomInput">Raum:</label>
+    <input id="roomInput" type="text" value="Global" placeholder="Global (Standard)" />
+    <button id="joinRoomBtn">Beitreten</button>
+  </div>
 
-const PORT = process.env.PORT || 3000;
-const HOST = "0.0.0.0";
+  <div id="log"></div>
 
-const DEFAULT_ROOM = "Global";
-const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,24}$/;
+  <form id="msgForm" autocomplete="off">
+    <input id="msgInput" type="text" placeholder="Nachricht eingeben oder Befehl /name, /msg ..." />
+    <button id="sendBtn" type="submit">Senden</button>
+  </form>
 
-const users = {}; // socket.id -> { name, room }
-const roomCounts = { [DEFAULT_ROOM]: 0 };
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const log = document.getElementById("log");
+    const roomInput = document.getElementById("roomInput");
+    const joinBtn = document.getElementById("joinRoomBtn");
+    const msgForm = document.getElementById("msgForm");
+    const msgInput = document.getElementById("msgInput");
 
-// --- Hilfsfunktionen ---
-function escapeHTML(str = "") {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function isValidRoom(room) {
-  return ROOM_NAME_REGEX.test(room);
-}
-
-// Generiert eindeutige Namen mit _2, _3 … falls schon vergeben
-function getUniqueName(desired) {
-  const lowerDesired = desired.trim().toLowerCase();
-  const currentNames = Object.values(users).map(u => u.name.toLowerCase());
-
-  if (!currentNames.includes(lowerDesired)) return desired;
-
-  let counter = 2;
-  let newName;
-  do {
-    newName = `${desired}_${counter}`;
-    counter++;
-  } while (currentNames.includes(newName.toLowerCase()));
-
-  return newName;
-}
-
-function uniqueGuestName() {
-  const base = "Gast-" + Math.random().toString(36).slice(2, 6);
-  return getUniqueName(base);
-}
-
-function joinRoom(socket, nextRoom) {
-  const uid = socket.id;
-  const user = users[uid];
-  if (!user) return;
-
-  const prevRoom = user.room;
-  if (prevRoom === nextRoom) return;
-
-  // alten Raum verlassen
-  if (prevRoom) {
-    socket.leave(prevRoom);
-    roomCounts[prevRoom] = Math.max(0, (roomCounts[prevRoom] || 0) - 1);
-    io.to(prevRoom).emit("system", `${user.name} hat den Raum verlassen.`);
-    sendRoomUserList(prevRoom);
-
-    if (prevRoom !== DEFAULT_ROOM && roomCounts[prevRoom] === 0) {
-      delete roomCounts[prevRoom];
-      io.emit("system", `Raum "${prevRoom}" wurde gelöscht (leer).`);
-    }
-  }
-
-  // neuen Raum betreten
-  if (!roomCounts[nextRoom]) roomCounts[nextRoom] = 0;
-  socket.join(nextRoom);
-  roomCounts[nextRoom] += 1;
-  users[uid].room = nextRoom;
-
-  socket.emit("system", `Du bist jetzt in Raum: ${nextRoom}`);
-  io.to(nextRoom).emit("system", `${user.name} ist dem Raum beigetreten.`);
-  sendRoomUserList(nextRoom);
-}
-
-function sendRoomUserList(room) {
-  const members = [];
-  for (const [id, info] of Object.entries(users)) {
-    if (info.room === room) members.push(info.name);
-  }
-  io.to(room).emit("userlist", { room, users: members });
-}
-
-// --- Static-Dateien ---
-app.use(express.static(path.join(__dirname)));
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-// --- Socket.IO ---
-io.on("connection", (socket) => {
-  const name = uniqueGuestName();
-  users[socket.id] = { name, room: null };
-
-  socket.emit("system", `Willkommen, dein Name ist ${name}. Ändere ihn mit /name <deinName>`);
-  joinRoom(socket, DEFAULT_ROOM);
-
-  socket.on("message", (raw) => {
-    const msg = (raw ?? "").toString().trim();
-    if (!msg) return;
-
-    // --- Name ändern ---
-    if (msg.startsWith("/name ")) {
-      const desired = escapeHTML(msg.slice(6).trim());
-      if (!desired) {
-        socket.emit("system", "Bitte gib einen Namen an: /name <deinName>");
-        return;
-      }
-      const uniqueName = getUniqueName(desired);
-      const oldName = users[socket.id].name;
-      users[socket.id].name = uniqueName;
-      socket.emit("system", `Dein Name ist jetzt: ${uniqueName}`);
-      io.to(users[socket.id].room).emit("system", `${oldName} heißt jetzt ${uniqueName}`);
-      sendRoomUserList(users[socket.id].room);
-      return;
+    function addLine(text, cls = "") {
+      const div = document.createElement("div");
+      div.className = cls;
+      div.innerHTML = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
     }
 
-    // --- Private Nachricht ---
-    if (msg.startsWith("/msg ")) {
-      const parts = msg.split(" ");
-      const targetName = parts[1];
-      const text = parts.slice(2).join(" ").trim();
-      if (!targetName || !text) {
-        socket.emit("system", "Nutzung: /msg <Name> <Text>");
-        return;
-      }
-      const safeText = escapeHTML(text);
-
-      const targetId = Object.keys(users).find(
-        id => users[id].name.toLowerCase() === targetName.toLowerCase()
-      );
-      if (!targetId) {
-        socket.emit("system", `Kein Benutzer mit dem Namen "${escapeHTML(targetName)}" gefunden.`);
-        return;
-      }
-
-      io.to(targetId).emit("private", {
-        from: users[socket.id].name,
-        text: safeText,
-        ts: Date.now(),
-      });
-      socket.emit("system", `Flüstern an ${escapeHTML(targetName)}: ${safeText}`);
-      return;
+    function fmtTime(ts) {
+      return new Date(ts).toLocaleTimeString();
     }
 
-    // --- Raum wechseln ---
-    if (msg.startsWith("/join ")) {
-      const roomName = msg.slice(6).trim();
-      if (!isValidRoom(roomName)) {
-        socket.emit("system", "Ungültiger Raumname. Erlaubt: Buchstaben, Zahlen, -, _ (1–24 Zeichen).");
-        return;
-      }
-      joinRoom(socket, roomName);
-      return;
-    }
-
-    // --- Hilfe anzeigen ---
-    if (msg === "/help") {
-      socket.emit("system", "Befehle: /name <neu>, /join <Raum>, /msg <Name> <Text>, /help");
-      return;
-    }
-
-    // --- Normale Nachricht ---
-    const safe = escapeHTML(msg);
-    const user = users[socket.id];
-    if (!user?.room) {
-      socket.emit("system", "Du bist in keinem Raum. Nutze /join <Raum>.");
-      return;
-    }
-
-    io.to(user.room).emit("chat", {
-      from: user.name,
-      room: user.room,
-      text: safe,
-      ts: Date.now(),
+    socket.on("system", (msg) => addLine("⚙ " + msg, "sys"));
+    socket.on("chat", (msg) => {
+      addLine(`<b>${msg.from}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "msg");
     });
-  });
+    socket.on("private", (msg) => {
+      addLine(`🤫 <b>${msg.from}</b>: ${msg.text} <time>${fmtTime(msg.ts)}</time>`, "priv");
+    });
 
-  socket.on("disconnect", () => {
-    const user = users[socket.id];
-    if (user) {
-      const { name, room } = user;
-      if (room) {
-        roomCounts[room] = Math.max(0, (roomCounts[room] || 1) - 1);
-        io.to(room).emit("system", `${name} hat den Chat verlassen.`);
-        sendRoomUserList(room);
-        if (room !== DEFAULT_ROOM && roomCounts[room] === 0) {
-          delete roomCounts[room];
-          io.emit("system", `Raum "${room}" wurde gelöscht (leer).`);
-        }
-      }
-      delete users[socket.id];
-    }
-  });
-});
+    msgForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = msgInput.value.trim();
+      if (!text) return;
+      socket.emit("message", text);
+      msgInput.value = "";
+      msgInput.focus();
+    });
 
-server.listen(PORT, HOST, () => {
-  console.log(`Server läuft auf http://localhost:${PORT}`);
-});
+    joinBtn.addEventListener("click", () => {
+      const roomName = roomInput.value.trim() || "Global";
+      socket.emit("message", `/join ${roomName}`);
+    });
+  </script>
+</body>
+</html>
