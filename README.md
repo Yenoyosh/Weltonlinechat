@@ -8,5 +8,8 @@ Dies ist ein **weltweit zugänglicher Chatserver**, gehostet bei [Render.com](ht
 - Echtzeit-Chat mit [Socket.IO](https://socket.io)
 - Eigene Namen setzen (`/name <deinName>`)
 - Private Nachrichten senden (`/msg <Name> <Nachricht>`)
+- In den Hauptraum wechseln: (`/main`)
+- Aktuelle Leute im Raum: (`/members`)
+- Leute aktuell online: (`/online`)
 - Vollständig browserbasiert – keine Installation nötig
 - Eigene Räume erstellen – private Gespräche
