@@ -55,7 +55,7 @@ function uniqueGuestName() {
 function isBotConnection(userAgent = "", flag = false) {
   if (flag) return true;
   if (!userAgent) return false;
-  return /bot|ai|python|curl|java|wget|postman/i.test(userAgent);
+  return /bot|ai|python|curl|java|wget|postman|openai|chatgpt/i.test(userAgent);
 }
 
 function joinRoom(socket, nextRoom) {
@@ -111,15 +111,15 @@ app.use(express.static(path.join(__dirname)));
 app.get("/", (req, res) => {
   const ua = req.headers["user-agent"] || "";
 
-  // KI-/Bot-Erkennung per Regex
+  // KI-/Bot-Erkennung per Regex inkl. OpenAI/ChatGPT
   if (/bot|ai|python|curl|java|wget|postman|openai|chatgpt/i.test(ua)) {
-    io.emit("system", `⚙️ KI hat die Website besucht (UA: ${ua})`);
+    const fakeName = getUniqueName("KI-Besucher");
+    io.emit("system", `⚙️ ${fakeName} hat die Website besucht (nur HTTP, UA: ${ua})`);
     console.log("👀 KI / Bot hat die Seite geöffnet:", ua);
   }
 
   res.sendFile(path.join(__dirname, "index.html"));
 });
-
 
 // ---------------- Socket.IO ----------------
 io.on("connection", (socket) => {
@@ -143,7 +143,7 @@ io.on("connection", (socket) => {
   if (isBotFlag) {
     io.emit("system", `⚙️ KI ${name} hat die Website betreten.`);
   } else {
-    io.emit("system", `${name} hat die Website betreten.`);
+    io.emit("system", `${name} hat den Chat betreten.`);
   }
 
   socket.emit("system", `Willkommen, dein Name ist ${name}. Ändere ihn mit /name <deinName>`);
@@ -206,14 +206,12 @@ io.on("connection", (socket) => {
     }
 
     if (msg === "/main") {
-  // zurück in den Standardraum wechseln
-  joinRoom(socket, DEFAULT_ROOM);
-
-  // sicherstellen, dass der Client das Inputfeld aktualisiert
-  socket.emit("roomUpdate", DEFAULT_ROOM);
-
-  return;
-}
+      // zurück in den Standardraum wechseln
+      joinRoom(socket, DEFAULT_ROOM);
+      // sicherstellen, dass das Inputfeld aktualisiert wird
+      socket.emit("roomUpdate", DEFAULT_ROOM);
+      return;
+    }
 
     if (msg === "/online") {
       const total = Object.keys(users).length;
