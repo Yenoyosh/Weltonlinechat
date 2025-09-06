@@ -105,17 +105,22 @@ function sendRoomUserList(room) {
 }
 
 // ---------------- Static Files ----------------
+// ---------------- Static Files ----------------
 app.use(express.static(path.join(__dirname)));
 
-// HTTP-Request abfangen und Bots erkennen
+// HTTP-Request abfangen und NUR Bots melden
 app.get("/", (req, res) => {
   const ua = req.headers["user-agent"] || "";
+
+  // KI-/Bot-Erkennung nur für HTTP-Aufruf
   if (/bot|ai|python|curl|java|wget|postman/i.test(ua)) {
-    console.log("👀 KI / Bot hat die Seite aufgerufen:", ua);
-    io.emit("system", `⚙️ KI mit UA "${ua}" hat die Website (HTTP) betreten.`);
+    io.emit("system", `⚙️ KI hat die Website besucht (UA: ${ua})`);
+    console.log("👀 KI / Bot hat die Seite geöffnet:", ua);
   }
+
   res.sendFile(path.join(__dirname, "index.html"));
 });
+
 
 // ---------------- Socket.IO ----------------
 io.on("connection", (socket) => {
