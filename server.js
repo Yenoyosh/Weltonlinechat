@@ -13,7 +13,7 @@ const HOST = "0.0.0.0";
 const DEFAULT_ROOM = "Global";
 const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,24}$/;
 
-const users = {}; // socket.id -> { name, room }
+const users = {}; // socket.id -> { name, room, isBot }
 const roomCounts = { [DEFAULT_ROOM]: 0 };
 
 // ---------------- Hilfsfunktionen ----------------
@@ -30,7 +30,6 @@ function isValidRoom(room) {
   return ROOM_NAME_REGEX.test(room);
 }
 
-// erzeugt eindeutige Namen mit _2, _3 usw.
 function getUniqueName(desired) {
   const lowerDesired = desired.trim().toLowerCase();
   const currentNames = Object.values(users).map(u => u.name.toLowerCase());
@@ -50,6 +49,13 @@ function getUniqueName(desired) {
 function uniqueGuestName() {
   const base = "Gast-" + Math.random().toString(36).slice(2, 6);
   return getUniqueName(base);
+}
+
+// KI-Erkennung anhand User-Agent und Flag
+function isBotConnection(userAgent = "", flag = false) {
+  if (flag) return true;
+  if (!userAgent) return false;
+  return /bot|ai|python|curl|java|wget|postman/i.test(userAgent);
 }
 
 function joinRoom(socket, nextRoom) {
@@ -82,6 +88,11 @@ function joinRoom(socket, nextRoom) {
   socket.emit("system", `Du bist jetzt in Raum: ${nextRoom}`);
   socket.emit("roomUpdate", nextRoom);
   io.to(nextRoom).emit("system", `${user.name} ist dem Raum beigetreten.`);
+
+  if (user.isBot) {
+    io.to(nextRoom).emit("system", `⚙️ KI erkannt: ${user.name} ist jetzt im Raum.`);
+  }
+
   sendRoomUserList(nextRoom);
 }
 
@@ -100,10 +111,35 @@ app.get("/", (_req, res) => {
 
 // ---------------- Socket.IO ----------------
 io.on("connection", (socket) => {
-  const name = uniqueGuestName();
-  users[socket.id] = { name, room: null };
+  // User-Agent aus handshake lesen
+  const userAgent = socket.handshake.headers["user-agent"] || "";
+
+  // Query-Parameter für Bot-Flag aus handshake lesen
+  const query = socket.handshake.query || {};
+  const clientIsBot = query.isBot === "true";
+  const botNameRaw = query.botName || "";
+
+  // Name bestimmen
+  let name;
+  if (clientIsBot && botNameRaw.trim()) {
+    name = getUniqueName(escapeHTML(botNameRaw.trim()));
+  } else {
+    name = uniqueGuestName();
+  }
+
+  // Nutzer registrieren mit Bot-Flag
+  const isBotFlag = isBotConnection(userAgent, clientIsBot);
+  users[socket.id] = { name, room: null, isBot: isBotFlag };
+
+  // Sofort Meldung bei Verbindungsaufbau (Website betreten)
+  if (isBotFlag) {
+    io.emit("system", `⚙️ KI ${name} hat die Website betreten.`);
+  } else {
+    io.emit("system", `${name} hat die Website betreten.`);
+  }
 
   socket.emit("system", `Willkommen, dein Name ist ${name}. Ändere ihn mit /name <deinName>`);
+
   joinRoom(socket, DEFAULT_ROOM);
 
   socket.on("changeRoom", (roomName) => {
@@ -118,7 +154,6 @@ io.on("connection", (socket) => {
     const msg = (raw ?? "").toString().trim();
     if (!msg) return;
 
-    // --- Name ändern ---
     if (msg.startsWith("/name ")) {
       const desired = escapeHTML(msg.slice(6).trim());
       if (!desired) {
@@ -134,7 +169,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // --- Privatnachricht ---
     if (msg.startsWith("/msg ")) {
       const parts = msg.split(" ");
       const targetName = parts[1];
@@ -163,20 +197,17 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // --- zurück in Main-Raum ---
     if (msg === "/main") {
       joinRoom(socket, DEFAULT_ROOM);
       return;
     }
 
-    // --- Online-Benutzer zählen ---
     if (msg === "/online") {
       const total = Object.keys(users).length;
       socket.emit("system", `Online: ${total} Benutzer`);
       return;
     }
 
-    // --- Mitglieder im aktuellen Raum ---
     if (msg === "/members") {
       const user = users[socket.id];
       if (!user?.room) {
@@ -190,7 +221,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // --- Hilfe anzeigen ---
     if (msg === "/help") {
       socket.emit("system",
         "Befehle:\n" +
@@ -204,7 +234,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // --- Normale Nachricht ---
+    // Normale Nachricht
     const safe = escapeHTML(msg);
     const user = users[socket.id];
     if (!user?.room) {
@@ -223,10 +253,13 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const user = users[socket.id];
     if (user) {
-      const { name, room } = user;
+      const { name, room, isBot } = user;
       if (room) {
         roomCounts[room] = Math.max(0, (roomCounts[room] || 1) - 1);
         io.to(room).emit("system", `${name} hat den Chat verlassen.`);
+        if (isBot) {
+          io.to(room).emit("system", `⚙️ KI ${name} hat den Raum verlassen.`);
+        }
         sendRoomUserList(room);
         if (room !== DEFAULT_ROOM && roomCounts[room] === 0) {
           delete roomCounts[room];
