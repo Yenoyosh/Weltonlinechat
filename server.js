@@ -86,7 +86,8 @@ function joinRoom(socket, nextRoom) {
   users[uid].room = nextRoom;
 
   socket.emit("system", `Du bist jetzt in Raum: ${nextRoom}`);
-  socket.emit("roomUpdate", nextRoom);
+  // explizit auch für den Joinenden sichtbar machen
+  socket.emit("system", `${user.name} ist dem Raum beigetreten.`);
   io.to(nextRoom).emit("system", `${user.name} ist dem Raum beigetreten.`);
 
   if (user.isBot) {
@@ -105,16 +106,21 @@ function sendRoomUserList(room) {
 
 // ---------------- Static Files ----------------
 app.use(express.static(path.join(__dirname)));
-app.get("/", (_req, res) => {
+
+// HTTP-Request abfangen und Bots erkennen
+app.get("/", (req, res) => {
+  const ua = req.headers["user-agent"] || "";
+  if (/bot|ai|python|curl|java|wget|postman/i.test(ua)) {
+    console.log("👀 KI / Bot hat die Seite aufgerufen:", ua);
+    io.emit("system", `⚙️ KI mit UA "${ua}" hat die Website (HTTP) betreten.`);
+  }
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // ---------------- Socket.IO ----------------
 io.on("connection", (socket) => {
-  // User-Agent aus handshake lesen
   const userAgent = socket.handshake.headers["user-agent"] || "";
 
-  // Query-Parameter für Bot-Flag aus handshake lesen
   const query = socket.handshake.query || {};
   const clientIsBot = query.isBot === "true";
   const botNameRaw = query.botName || "";
@@ -127,11 +133,9 @@ io.on("connection", (socket) => {
     name = uniqueGuestName();
   }
 
-  // Nutzer registrieren mit Bot-Flag
   const isBotFlag = isBotConnection(userAgent, clientIsBot);
   users[socket.id] = { name, room: null, isBot: isBotFlag };
 
-  // Sofort Meldung bei Verbindungsaufbau (Website betreten)
   if (isBotFlag) {
     io.emit("system", `⚙️ KI ${name} hat die Website betreten.`);
   } else {
