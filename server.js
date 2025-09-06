@@ -207,9 +207,14 @@ io.on("connection", (socket) => {
     }
 
     if (msg === "/main") {
-      joinRoom(socket, DEFAULT_ROOM);
-      return;
-    }
+  // zurück in den Standardraum wechseln
+  joinRoom(socket, DEFAULT_ROOM);
+
+  // sicherstellen, dass der Client das Inputfeld aktualisiert
+  socket.emit("roomUpdate", DEFAULT_ROOM);
+
+  return;
+}
 
     if (msg === "/online") {
       const total = Object.keys(users).length;
