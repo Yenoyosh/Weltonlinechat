@@ -1,5 +1,8 @@
 // call.js
 const socket = io();
+
+// NEU – möglichst weit oben
+const remoteAudio = document.getElementById('remoteAudio');
 let localStream;
 const peers = {};
 let isInCall = false;
