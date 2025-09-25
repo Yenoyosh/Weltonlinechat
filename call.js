@@ -74,11 +74,16 @@ socket.emit("ice-candidate", { to: peerId, candidate: event.candidate });
 };
 
 pc.ontrack = (event) => {
-const audio = document.createElement("audio");
-audio.srcObject = event.streams[0];
-audio.autoplay = true;
-document.body.appendChild(audio);
-};
+   if (event.streams && event.streams[0]) {
+     remoteAudio.srcObject = event.streams[0];
+   } else {
+     const ms = new MediaStream();
+     ms.addTrack(event.track);
+     remoteAudio.srcObject = ms;
+   }
+   // Falls Autoplay vorher blockiert war, jetzt nochmal versuchen:
+   remoteAudio.play().catch(() => {});
+ };
 
 if (isInitiator) {
 pc.onnegotiationneeded = async () => {
