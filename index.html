@@ -36,7 +36,12 @@
     <button id="sendBtn" type="submit">Senden</button>
   </form>
 
+  <div id="callJoinSection" style="display:none; margin-top:10px;">
+<button id="joinCallBtn">🔊 Dem offenen Audio-Call beitreten</button>
+</div>
+
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/call.js"></script>
   <script>
     const socket = io();
     const log = document.getElementById("log");
@@ -81,6 +86,23 @@
       const roomName = roomInput.value.trim() || "Global";
       socket.emit("changeRoom", roomName);
     });
+
+    const callJoinSection = document.getElementById("callJoinSection");
+const joinCallBtn = document.getElementById("joinCallBtn");
+
+socket.on("system", (msg) => {
+if (msg.includes("offenen Audio-Call gestartet")) {
+callJoinSection.style.display = "block";
+}
+if (msg.includes("Audio-Call wurde beendet")) {
+callJoinSection.style.display = "none";
+}
+});
+
+joinCallBtn.addEventListener("click", () => {
+const room = roomInput.value.trim() || "Global";
+window.initCall(room);
+});
   </script>
 </body>
 </html>
