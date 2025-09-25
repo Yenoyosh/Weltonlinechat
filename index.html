@@ -102,10 +102,17 @@ callJoinSection.style.display = "none";
 }
 });
 
-joinCallBtn.addEventListener("click", () => {
-const room = roomInput.value.trim() || "Global";
-window.initCall(room);
+joinCallBtn.addEventListener("click", async () => {
+  const room = roomInput.value.trim() || "Global";
+
+  // NEU: Audio-Wiedergabe durch User-Geste "armen"
+  const audio = document.getElementById("remoteAudio");
+  try { await audio.play(); } catch (e) { console.warn("Autoplay blockiert:", e); }
+
+  // wie bisher
+  window.initCall(room);
 });
+
   </script>
 </body>
 </html>
