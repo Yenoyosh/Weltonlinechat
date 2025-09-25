@@ -22,7 +22,7 @@ function joinOpenCall(room) {
 if (!localStream) return;
 
 if (isInCall) {
-alert(⚠️ Du bist bereits in einem Call.");
+alert("⚠️ Du bist bereits in einem Call.");
 return;
 }
 
