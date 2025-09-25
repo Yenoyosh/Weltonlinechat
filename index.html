@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="de">
 <head>
@@ -36,15 +37,7 @@
     <button id="sendBtn" type="submit">Senden</button>
   </form>
 
-  <div id="callJoinSection" style="display:none; margin-top:10px;">
-<button id="joinCallBtn">🔊 Dem offenen Audio-Call beitreten</button>
-    <!-- NEU (nur hinzufügen) -->
-<audio id="remoteAudio" autoplay playsinline></audio>
-
-</div>
-
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/call.js"></script>
   <script>
     const socket = io();
     const log = document.getElementById("log");
@@ -89,30 +82,6 @@
       const roomName = roomInput.value.trim() || "Global";
       socket.emit("changeRoom", roomName);
     });
-
-    const callJoinSection = document.getElementById("callJoinSection");
-const joinCallBtn = document.getElementById("joinCallBtn");
-
-socket.on("system", (msg) => {
-if (msg.includes("offenen Audio-Call gestartet")) {
-callJoinSection.style.display = "block";
-}
-if (msg.includes("Audio-Call wurde beendet")) {
-callJoinSection.style.display = "none";
-}
-});
-
-joinCallBtn.addEventListener("click", async () => {
-  const room = roomInput.value.trim() || "Global";
-
-  // NEU: Audio-Wiedergabe durch User-Geste "armen"
-  const audio = document.getElementById("remoteAudio");
-  try { await audio.play(); } catch (e) { console.warn("Autoplay blockiert:", e); }
-
-  // wie bisher
-  window.initCall(room);
-});
-
   </script>
 </body>
 </html>
