@@ -64,8 +64,11 @@ function createPeerConnection(peerId, isInitiator) {
 const pc = new RTCPeerConnection({
 iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 });
-
-localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  } else {
+    console.warn("Kein localStream vorhanden – addTrack übersprungen.");
+ }
 
 pc.onicecandidate = (event) => {
 if (event.candidate) {
